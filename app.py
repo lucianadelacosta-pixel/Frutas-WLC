@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 # --- 1. CONFIGURACIÓN VISUAL Y FONDO (PANTALLA COMPLETA) ---
-st.set_page_config(page_title="Frutas WLC", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Frutas WC", layout="wide", initial_sidebar_state="collapsed")
 
 # CSS para ocultar el panel lateral por completo y mejorar la estética
 st.markdown("""
