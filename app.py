@@ -37,11 +37,11 @@ def generar_pdf(datos_pedido):
     p = canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
 
-    # Encabezado
+    # Encabezado estilo NOTA DE PEDIDO WC
     p.setFont("Helvetica-Bold", 16)
     p.drawString(50, h - 50, "FRUTAS WC - NOTA DE PEDIDO")
     p.setFont("Helvetica", 10)
-    p.drawString(50, h - 65, "Distribución Logística de Frescuras en Córdoba")
+    p.drawString(50, h - 65, "Contacto: 351 6351605 | Correo: frutasyverduraswc@gmail.com")
     p.line(50, h - 70, 550, h - 70)
 
     # Información del Cliente
@@ -66,7 +66,7 @@ def generar_pdf(datos_pedido):
         p.drawString(350, y, str(item['Cant.']))
         p.drawString(450, y, str(item['Kg.']))
         y -= 15
-        if y < 50: # Nueva página si es muy largo
+        if y < 50:
             p.showPage()
             y = h - 50
 
@@ -78,86 +78,4 @@ def generar_pdf(datos_pedido):
 # --- 3. BASE DE DATOS Y ESTADO ---
 if 'rol' not in st.session_state: st.session_state.rol = "Cliente"
 if 'nav' not in st.session_state: st.session_state.nav = "Inicio"
-if 'lista_temporal' not in st.session_state: st.session_state.lista_temporal = []
-if 'pedidos_db' not in st.session_state: st.session_state.pedidos_db = []
-if 'productos_wc' not in st.session_state:
-    st.session_state.productos_wc = ["Acelga", "Anco", "Banana", "Cebolla", "Huevos", "Papa", "Tomate"]
-
-# --- 4. NAVEGACIÓN ---
-st.title("🍎 FRUTAS WC")
-c1, c2, c3, c4 = st.columns(4)
-if st.session_state.rol == "Cliente":
-    if c1.button("🏠 Inicio", use_container_width=True): st.session_state.nav = "Inicio"
-    if c2.button("📖 Nosotros", use_container_width=True): st.session_state.nav = "Nosotros"
-    if c3.button("🛒 Crear Pedido", use_container_width=True): st.session_state.nav = "Crear Pedido"
-    if c4.button("🔎 Mi Pedido", use_container_width=True): st.session_state.nav = "Estado"
-else:
-    if c1.button("📊 Pedidos", use_container_width=True): st.session_state.nav = "Resumen"
-    if c2.button("⚙️ Actualizar Excel", use_container_width=True): st.session_state.nav = "Precios"
-    if c3.button("🚪 Salir", use_container_width=True): 
-        st.session_state.rol = "Cliente"
-        st.rerun()
-
-st.divider()
-
-# --- 5. SECCIÓN CREAR PEDIDO ---
-if st.session_state.nav == "Crear Pedido" and st.session_state.rol == "Cliente":
-    st.header("📝 Armá tu Pedido")
-    nombre_c = st.text_input("Nombre del Cliente / Negocio")
-    
-    col_f, col_h1, col_h2 = st.columns([2, 1, 1])
-    with col_f:
-        fecha_e = st.date_input("Fecha de Entrega", min_value=datetime.now().date() + timedelta(days=1))
-    with col_h1: h_desde = st.time_input("Desde", value=datetime.strptime("08:00", "%H:%M"))
-    with col_h2: h_hasta = st.time_input("Hasta", value=datetime.strptime("14:00", "%H:%M"))
-
-    st.write("---")
-    col_p, col_c, col_k, col_b = st.columns([3, 1, 1, 1])
-    with col_p: item_sel = st.selectbox("Buscar producto...", st.session_state.productos_wc)
-    with col_c: cant_sel = st.number_input("Bultos", min_value=0, step=1)
-    with col_k: kg_sel = st.number_input("Kg.", min_value=0.0, step=0.5)
-    with col_b:
-        st.write(" ")
-        if st.button("➕ Agregar"):
-            if cant_sel > 0 or kg_sel > 0:
-                st.session_state.lista_temporal.append({"Descripción": item_sel, "Cant.": cant_sel, "Kg.": kg_sel})
-                st.rerun()
-
-    if st.session_state.lista_temporal:
-        st.write("### Resumen:")
-        st.table(pd.DataFrame(st.session_state.lista_temporal))
-        
-        if st.button("🚀 CONFIRMAR PEDIDO"):
-            if nombre_c:
-                resumen = {
-                    "Cliente": nombre_c, "Fecha": fecha_e.strftime("%d/%m/%Y"),
-                    "Horario": f"{h_desde.strftime('%H:%M')} a {h_hasta.strftime('%H:%M')}",
-                    "Detalle": st.session_state.lista_temporal
-                }
-                st.session_state.pedidos_db.append(resumen)
-                pdf_fp = generar_pdf(resumen)
-                
-                st.success("¡Pedido confirmado!")
-                st.download_button(
-                    label="📥 Descargar Nota de Pedido (PDF)",
-                    data=pdf_fp,
-                    file_name=f"Pedido_{nombre_c}_{fecha_e}.pdf",
-                    mime="application/pdf"
-                )
-                st.session_state.lista_temporal = []
-            else: st.error("Ingresá tu nombre.")
-
-# --- LOGIN ADMIN AL FINAL ---
-st.write("---")
-if st.session_state.rol == "Cliente":
-    with st.expander("🔒 Acceso Administración"):
-        u = st.text_input("Usuario")
-        p = st.text_input("Contraseña", type="password")
-        if st.button("Entrar"):
-            if u == "Luciana" and p == "WC2026":
-                st.session_state.rol = "Admin"
-                st.session_state.nav = "Resumen"
-                st.rerun()
-
-wa_link = "https://wa.me/543516422893?text=Consultas%20FRUTAS%20WC"
-st.markdown(f'<a href="{wa_link}" class="wa-float" target="_blank">💬 WhatsApp</a>', unsafe_allow_html=True)
+if 'lista_temporal' not in st.session_state
