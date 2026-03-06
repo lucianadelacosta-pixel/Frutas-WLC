@@ -1,118 +1,171 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from reportlab.lib import colors
-from reportlab.lib.units import mm
 
-# =========================
-# 1) CONFIG INICIAL & CSS
-# =========================
+# --- 1. CONFIGURACIÓN VISUAL ---
 st.set_page_config(page_title="FRUTAS WC", layout="wide", initial_sidebar_state="collapsed")
 
-CUSTOM_CSS = """
-<style>
-[data-testid="stSidebar"] {display: none;}
-.stApp {
-    background-image: url("app/static/fondo.jpg");
-    background-size: cover;
-    background-position: center bottom;
-    background-attachment: fixed;
-}
-.main .block-container {
-    background-color: rgba(255, 255, 255, 0.96);
-    border-radius: 15px; padding: 30px; max-width: 980px;
-}
-.wa-float {
-    position: fixed; bottom: 20px; right: 20px;
-    background-color: #25d366; color: white; border-radius: 50px;
-    padding: 12px 20px; display: flex; align-items: center; gap: 10px;
-    text-decoration: none; z-index: 100; font-weight: bold;
-}
-.stButton>button { border-radius: 8px; }
-</style>
-"""
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+st.markdown("""
+    <style>
+    [data-testid="stSidebar"] {display: none;}
+    .stApp {
+        background-image: url("app/static/fondo.jpg"); 
+        background-size: cover;
+        background-position: center bottom;
+        background-attachment: fixed;
+    }
+    .main .block-container {
+        background-color: rgba(255, 255, 255, 0.96);
+        border-radius: 15px; padding: 30px; max-width: 950px;
+    }
+    .wa-float {
+        position: fixed; bottom: 20px; right: 20px;
+        background-color: #25d366; color: white; border-radius: 50px;
+        padding: 12px 20px; display: flex; align-items: center; gap: 10px;
+        text-decoration: none; z-index: 100; font-weight: bold;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# =========================
-# 2) STATE & HELPERS
-# =========================
-def init_state():
-    if "nav" not in st.session_state: st.session_state.nav = "Inicio"
-    if "rol" not in st.session_state: st.session_state.rol = "Cliente"
-    if "lista" not in st.session_state: st.session_state.lista = []
-    if "productos" not in st.session_state:
-        st.session_state.productos = [
-            "Acelga", "Anco", "Banana", "Cebolla", "Huevos", "Papa", "Tomate"
-        ]
-    if "ultimo_pedido" not in st.session_state: st.session_state.ultimo_pedido = None
-
-def normalizar_texto(s: str) -> str:
-    return (s or "").strip().upper()
-
-def agregar_item(descripcion: str, cant: int, kg: float, tipo: str):
-    """Agrega o acumula un item (si misma desc y tipo)."""
-    if not descripcion:
-        return
-    if cant <= 0 and kg <= 0:
-        return
-    descripcion = normalizar_texto(descripcion)
-    tipo = normalizar_texto(tipo)
-
-    # Buscar si ya existe mismo item/tipo y acumular
-    for row in st.session_state.lista:
-        if row["Descripción"] == descripcion and row["Tipo"] == tipo:
-            row["Cant."] = int(row.get("Cant.", 0)) + int(cant)
-            row["Kg."] = float(row.get("Kg.", 0.0)) + float(kg)
-            break
-    else:
-        st.session_state.lista.append({
-            "Descripción": descripcion,
-            "Cant.": int(cant),
-            "Kg.": float(kg),
-            "Tipo": tipo
-        })
-
-def totals(df: pd.DataFrame):
-    if df.empty:
-        return 0, 0.0
-    return int(df["Cant."].sum()), float(df["Kg."].sum())
-
-def format_phone_message(cliente: str, fecha: str, horario: str, df: pd.DataFrame) -> str:
-    """Construye texto para WhatsApp."""
-    lines = [
-        f"Hola! Soy {cliente}. Quiero confirmar mi pedido:",
-        f"Entrega: {fecha} ({horario})",
-        "",
-        "Detalle:"
-    ]
-    for _, r in df.iterrows():
-        lines.append(f"- {r['Descripción']} | Bultos: {int(r['Cant.'])} | Kg: {r['Kg.']:.2f} | {r['Tipo']}")
-    c_tot, k_tot = totals(df)
-    lines += ["", f"Totales → Bultos: {c_tot}  |  Kg: {k_tot:.2f}"]
-    return "\n".join(lines)
-
-# =========================
-# 3) PDF MEJORADO
-# =========================
+# --- 2. FUNCIÓN PARA GENERAR EL PDF ---
 def generar_pdf(datos_pedido):
-    """
-    datos_pedido:
-      {
-        "Cliente": str,
-        "Fecha": "dd/mm/YYYY",
-        "Horario": "HH:MM a HH:MM",
-        "Detalle": [ {Descripción, Cant., Kg., Tipo}, ... ]
-      }
-    """
-    buf = BytesIO()
-    p = canvas.Canvas(buf, pagesize=A4)
+    buffer = BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
     w, h = A4
 
-    margin_x = 20 * mm
-    margin_y = 15 * mm
-    cursor_y = h - margin_y
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, h - 50, "FRUTAS WC - NOTA DE PEDIDO")
+    p.setFont("Helvetica", 10)
+    p.drawString(50, h - 65, "Contacto: 351 6351605 | Correo: frutasyverduraswc@gmail.com")
+    p.line(50, h - 70, 550, h - 70)
 
-    def header_footer(page_num):
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, h - 100, f"Cliente: {datos_pedido['Cliente']}")
+    p.setFont("Helvetica", 11)
+    p.drawString(50, h - 115, f"Fecha de Entrega: {datos_pedido['Fecha']}")
+    p.drawString(50, h - 130, f"Rango Horario: {datos_pedido['Horario']}")
+
+    y = h - 170
+    p.setFont("Helvetica-Bold", 11)
+    p.drawString(50, y, "Descripción")
+    p.drawString(350, y, "Cant. (Bultos)")
+    p.drawString(450, y, "Kg.")
+    p.line(50, y - 5, 550, y - 5)
+    
+    y -= 20
+    p.setFont("Helvetica", 10)
+    for item in datos_pedido['Detalle']:
+        p.drawString(50, y, str(item['Descripción']))
+        p.drawString(350, y, str(item['Cant.']))
+        p.drawString(450, y, str(item['Kg.']))
+        y -= 15
+        if y < 50:
+            p.showPage()
+            y = h - 50
+
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return buffer
+
+# --- 3. ESTADO DE SESIÓN ---
+if 'nav' not in st.session_state: st.session_state.nav = "Inicio"
+if 'rol' not in st.session_state: st.session_state.rol = "Cliente"
+if 'lista_temporal' not in st.session_state: st.session_state.lista_temporal = []
+if 'productos_wc' not in st.session_state:
+    st.session_state.productos_wc = ["Acelga", "Anco", "Banana", "Cebolla", "Huevos", "Papa", "Tomate"]
+
+# --- 4. NAVEGACIÓN ---
+st.title("🍎 FRUTAS WC")
+c1, c2, c3, c4 = st.columns(4)
+if st.session_state.rol == "Cliente":
+    if c1.button("🏠 Inicio", use_container_width=True): st.session_state.nav = "Inicio"
+    if c2.button("📖 Nosotros", use_container_width=True): st.session_state.nav = "Nosotros"
+    if c3.button("🛒 Crear Pedido", use_container_width=True): st.session_state.nav = "Crear Pedido"
+    if c4.button("🔎 Mi Pedido", use_container_width=True): st.session_state.nav = "Estado"
+
+st.divider()
+
+# --- 5. SECCIÓN CREAR PEDIDO ---
+if st.session_state.nav == "Crear Pedido":
+    st.header("🛒 Armá tu Pedido")
+    nombre_c = st.text_input("Nombre del Cliente / Negocio")
+    
+    col_f, col_h1, col_h2 = st.columns([2, 1, 1])
+    with col_f:
+        fecha_e = st.date_input("Fecha de Entrega", min_value=datetime.now().date() + timedelta(days=1))
+    with col_h1: h_desde = st.time_input("Desde", value=datetime.strptime("08:00", "%H:%M"))
+    with col_h2: h_hasta = st.time_input("Hasta", value=datetime.strptime("14:00", "%H:%M"))
+
+    st.write("---")
+    # SELECCIÓN DE PRODUCTOS
+    st.subheader("1. Seleccioná de la lista")
+    col_p, col_c, col_k, col_b = st.columns([3, 1, 1, 1])
+    with col_p: item_sel = st.selectbox("Buscar producto...", st.session_state.productos_wc)
+    with col_c: cant_sel = st.number_input("Bultos", min_value=0, step=1, key="c_main")
+    with col_k: kg_sel = st.number_input("Kg.", min_value=0.0, step=0.5, key="k_main")
+    with col_b:
+        st.write(" ")
+        if st.button("➕ Agregar"):
+            if cant_sel > 0 or kg_sel > 0:
+                st.session_state.lista_temporal.append({"Descripción": item_sel, "Cant.": cant_sel, "Kg.": kg_sel})
+                st.rerun()
+
+    # PEDIDO ACTUAL (JUSTO DEBAJO)
+    if st.session_state.lista_temporal:
+        st.write("### 📋 Pedido Actual")
+        st.dataframe(pd.DataFrame(st.session_state.lista_temporal), hide_index=True, use_container_width=True)
+        if st.button("🗑️ Borrar último ítem"):
+            st.session_state.lista_temporal.pop()
+            st.rerun()
+        st.write("---")
+
+    # AGREGAR OTRO (AL FINAL)
+    with st.expander("➕ Agregar producto que NO está en la lista"):
+        col_n1, col_n2, col_n3, col_n4 = st.columns([3, 1, 1, 1])
+        with col_n1: o_nom = st.text_input("Nombre del producto")
+        with col_n2: o_can = st.number_input("Bultos", min_value=0, step=1, key="o_c")
+        with col_n3: o_kg = st.number_input("Kg.", min_value=0.0, step=0.5, key="o_k")
+        with col_n4:
+            st.write(" ")
+            if st.button("✔ Añadir Especial"):
+                if o_nom:
+                    st.session_state.lista_temporal.append({"Descripción": o_nom.upper(), "Cant.": o_can, "Kg.": o_kg})
+                    st.rerun()
+
+    # BOTÓN DE CONFIRMACIÓN
+    if st.session_state.lista_temporal:
+        if st.button("🚀 CONFIRMAR Y GENERAR PDF", use_container_width=True):
+            if nombre_c:
+                resumen = {
+                    "Cliente": nombre_c, "Fecha": fecha_e.strftime("%d/%m/%Y"),
+                    "Horario": f"{h_desde.strftime('%H:%M')} a {h_hasta.strftime('%H:%M')}",
+                    "Detalle": st.session_state.lista_temporal
+                }
+                pdf_file = generar_pdf(resumen)
+                st.success(f"¡Pedido confirmado para {nombre_c}!")
+                st.download_button(
+                    label="📥 Descargar Nota de Pedido (PDF)",
+                    data=pdf_file,
+                    file_name=f"Pedido_{nombre_c}.pdf",
+                    mime="application/pdf"
+                )
+            else:
+                st.error("Por favor, ingresá el nombre del cliente arriba.")
+
+# --- LOGIN ADMIN ---
+st.write("---")
+if st.session_state.rol == "Cliente":
+    with st.expander("🔒 Acceso Administración"):
+        u = st.text_input("Usuario")
+        p = st.text_input("Contraseña", type="password")
+        if st.button("Entrar"):
+            if u == "Luciana" and p == "WC2026":
+                st.session_state.rol = "Admin"
+                st.rerun()
+
+wa_link = "https://wa.me/543516422893?text=Consultas%20FRUTAS%20WC"
+st.markdown(f'<a href="{wa_link}" class="wa-float" target="_blank">💬 WhatsApp</a>', unsafe_allow_html=True)
