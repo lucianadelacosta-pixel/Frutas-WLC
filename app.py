@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
-# FRUTAS WC - App de pedidos con PDF + estados + envío por email
-# Autoría: personalizada para Luciana - División Logística
-# Requisitos: streamlit, reportlab
-# -------------------------------------------------------------
-# SMTP: configurar en .streamlit/secrets.toml (ver README arriba)
+# FRUTAS WC - App de pedidos con PDF + estados + envío por email (optimizada)
+# ---------------------------------------------------------------------------
+# Configurar SMTP en .streamlit/secrets.toml:
+# SMTP_HOST="smtp.gmail.com"
+# SMTP_PORT=587
+# SMTP_USER="tucuenta@gmail.com"
+# SMTP_PASS="APP_PASSWORD_DE_GMAIL"
+# SMTP_FROM="FRUTAS WC <tucuenta@gmail.com>"
+# ADMIN_USER="Luciana"
+# ADMIN_PASS="WC2026"
 
 import streamlit as st
 import pandas as pd
@@ -22,28 +27,16 @@ from reportlab.lib.units import mm
 # =========================
 st.set_page_config(page_title="FRUTAS WC", layout="wide", initial_sidebar_state="collapsed")
 
-CUSTOM_CSS = """
+st.markdown("""
 <style>
 [data-testid="stSidebar"] {display: none;}
-.stApp {
-    background-size: cover;
-    background-position: center bottom;
-    background-attachment: fixed;
-}
-.main .block-container {
-    background-color: rgba(255, 255, 255, 0.96);
-    border-radius: 15px; padding: 30px; max-width: 980px;
-}
-.wa-float {
-    position: fixed; bottom: 20px; right: 20px;
-    background-color: #25d366; color: white; border-radius: 50px;
-    padding: 12px 20px; display: flex; align-items: center; gap: 10px;
-    text-decoration: none; z-index: 100; font-weight: bold;
-}
+.stApp { background-size: cover; background-position: center bottom; background-attachment: fixed; }
+.main .block-container { background-color: rgba(255, 255, 255, 0.96); border-radius: 15px; padding: 30px; max-width: 980px; }
+.wa-float { position: fixed; bottom: 20px; right: 20px; background-color: #25d366; color: white; border-radius: 50px;
+            padding: 12px 20px; display: flex; align-items: center; gap: 10px; text-decoration: none; z-index: 100; font-weight: bold; }
 .stButton>button { border-radius: 8px; }
 </style>
-"""
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # =========================
 # 1) STATE & HELPERS
@@ -51,9 +44,10 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 def init_state():
     if "nav" not in st.session_state: st.session_state.nav = "Inicio"
     if "rol" not in st.session_state: st.session_state.rol = "Cliente"
-    if "lista" not in st.session_state: st.session_state.lista = []
+    if "lista" not in st.session_state: st.session_state.lista = []          # items del pedido actual
+    if "lista_hash" not in st.session_state: st.session_state.lista_hash = ""# para evitar trabajo repetido
     if "ultimo_pedido" not in st.session_state: st.session_state.ultimo_pedido = None
-    if "pedidos" not in st.session_state: st.session_state.pedidos = {}  # id -> pedido
+    if "pedidos" not in st.session_state: st.session_state.pedidos = {}      # id -> pedido
 
     # Catálogo en el orden de tu plantilla (dos columnas fijas del PDF)
     if "catalogo_left" not in st.session_state:
@@ -87,17 +81,13 @@ def agregar_item(descripcion: str, cant: float, kg: float, tipo: str):
     """Agrega o acumula un item por Descripción+Tipo."""
     if not descripcion: return
     if (cant or 0) <= 0 and (kg or 0.0) <= 0: return
-
     descripcion = normalizar_texto(descripcion)
     tipo = normalizar_texto(tipo)
-
-    # acumular si ya existe
     for row in st.session_state.lista:
         if row["Descripción"] == descripcion and row["Tipo"] == tipo:
             row["Cant."] = int(row.get("Cant.", 0)) + int(cant or 0)
             row["Kg."] = float(row.get("Kg.", 0.0)) + float(kg or 0.0)
             return
-
     st.session_state.lista.append({
         "Descripción": descripcion,
         "Cant.": int(cant or 0),
@@ -107,13 +97,15 @@ def agregar_item(descripcion: str, cant: float, kg: float, tipo: str):
 
 def totals(df: pd.DataFrame):
     if df.empty: return 0, 0.0
-    return int(df["Cant."].sum()), float(df["Kg."].sum())
+    return int(pd.to_numeric(df["Cant."], errors="coerce").fillna(0).sum()), \
+           float(pd.to_numeric(df["Kg."], errors="coerce").fillna(0.0).sum())
 
 def enviar_email_pdf(destinatario: str, asunto: str, cuerpo_txt: str, nombre_pdf: str, pdf_bytes: bytes) -> tuple[bool, str]:
     """
     Envía email con PDF adjunto usando SMTP definido en st.secrets.
-    secrets.toml:
-      SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+    Evita bloqueos:
+      - Valida secrets
+      - Usa timeout=10s en la conexión
     """
     try:
         host = st.secrets.get("SMTP_HOST", "")
@@ -130,11 +122,18 @@ def enviar_email_pdf(destinatario: str, asunto: str, cuerpo_txt: str, nombre_pdf
         msg["From"] = sender
         msg["To"] = destinatario
         msg.set_content(cuerpo_txt)
-
         msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=nombre_pdf)
 
-        with smtplib.SMTP(host, port) as server:
-            server.starttls()
+        # Timeout corto para evitar “pensando…”
+        with smtplib.SMTP(host, port, timeout=10) as server:
+            server.ehlo()
+            # STARTTLS si corresponde
+            try:
+                server.starttls()
+                server.ehlo()
+            except Exception:
+                # Si el servidor no requiere/soporta TLS, seguimos sin romper
+                pass
             server.login(user, password)
             server.send_message(msg)
 
@@ -244,6 +243,8 @@ def generar_pdf_wc(datos_pedido):
     idx = {}
     for it in datos_pedido.get("Detalle", []):
         desc = str(it.get("Descripción","")).strip().upper()
+        if not desc:
+            continue
         idx[desc] = {
             "cant": it.get("Cant.", ""),
             "kg": it.get("Kg.", ""),
@@ -255,11 +256,20 @@ def generar_pdf_wc(datos_pedido):
         p.drawString(x0 + 2, y, nombre)
         k = idx.get(nombre.upper(), None)
         if k and k["cant"] not in (None, "", 0, 0.0):
-            p.drawRightString(x0 + desc_w + cant_w - 2, y, str(int(float(k["cant"]))))
+            try:
+                p.drawRightString(x0 + desc_w + cant_w - 2, y, str(int(float(k["cant"]))))
+            except Exception:
+                pass
         if k and k["kg"] not in (None, "", 0, 0.0):
-            p.drawRightString(x0 + desc_w + cant_w + kg_w - 2, y, _fmt_num(k["kg"]))
+            try:
+                p.drawRightString(x0 + desc_w + cant_w + kg_w - 2, y, _fmt_num(k["kg"]))
+            except Exception:
+                pass
         if k and k["imp"] not in (None, "", 0, 0.0):
-            p.drawRightString(x0 + desc_w + cant_w + kg_w + imp_w - 2, y, _fmt_num(k["imp"], 2))
+            try:
+                p.drawRightString(x0 + desc_w + cant_w + kg_w + imp_w - 2, y, _fmt_num(k["imp"], 2))
+            except Exception:
+                pass
 
     # Bloque izquierdo
     y_cursor_left = y_tbl_top
@@ -281,9 +291,12 @@ def generar_pdf_wc(datos_pedido):
     total_importe = 0.0
     hay_importes = False
     for v in idx.values():
-        if v["imp"] not in (None, "", 0, 0.0):
-            total_importe += float(v["imp"])
-            hay_importes = True
+        try:
+            if v["imp"] not in (None, "", 0, 0.0):
+                total_importe += float(v["imp"])
+                hay_importes = True
+        except Exception:
+            pass
 
     vacios = 0
     for nombre in (PRODUCTOS_COL_IZQ + PRODUCTOS_COL_DER):
@@ -365,7 +378,6 @@ if st.session_state.nav == "Crear Pedido":
             else:
                 agregar_item(item_sel, cant_sel, kg_sel, "Catálogo")
 
-        # ESPECIALES
         with st.expander("➕ Agregar producto que NO está en la lista"):
             st.info("Usá esta sección solo si el producto no figura en el buscador de arriba.")
             col_n1, col_n2, col_n3, col_n4 = st.columns([3, 1, 1, 1])
@@ -389,45 +401,55 @@ if st.session_state.nav == "Crear Pedido":
 
         submitted_final = st.form_submit_button("🚀 FINALIZAR Y GENERAR PDF", use_container_width=True)
 
-    # TABLA EDITABLE
+    # --- Tabla editable y totales (solo si hay items)
     if st.session_state.lista:
+        # Hash simple para no recalcular si no cambió
+        lista_hash_new = str(st.session_state.lista)
+        recalc = (lista_hash_new != st.session_state.lista_hash)
+
+        if recalc:
+            df = pd.DataFrame(st.session_state.lista)
+            if "Eliminar" not in df.columns:
+                df["Eliminar"] = False
+
+            edited_df = st.data_editor(
+                df,
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "Descripción": st.column_config.TextColumn("Descripción", width="large"),
+                    "Cant.": st.column_config.NumberColumn("Bultos", min_value=0, step=1),
+                    "Kg.": st.column_config.NumberColumn("Kg.", min_value=0.0, step=0.5, format="%.2f"),
+                    "Tipo": st.column_config.TextColumn("Tipo"),
+                    "Eliminar": st.column_config.CheckboxColumn("Eliminar")
+                }
+            )
+
+            cleaned = []
+            for _, r in edited_df.iterrows():
+                if bool(r.get("Eliminar", False)):  # evitar KeyError
+                    continue
+                # coerción segura
+                try: c = int(r.get("Cant.", 0) or 0)
+                except: c = 0
+                try: k = float(r.get("Kg.", 0.0) or 0.0)
+                except: k = 0.0
+                d = normalizar_texto(str(r.get("Descripción", "") or ""))
+                t = normalizar_texto(str(r.get("Tipo", "") or ""))
+                if not d:  # si quedó sin descripción, ignorar
+                    continue
+                if c == 0 and k == 0:
+                    continue
+                cleaned.append({"Descripción": d, "Cant.": c, "Kg.": round(k, 2), "Tipo": t})
+
+            st.session_state.lista = cleaned
+            st.session_state.lista_hash = str(cleaned)
+            df_now = pd.DataFrame(cleaned)
+        else:
+            df_now = pd.DataFrame(st.session_state.lista)
+
         st.write("### 📋 Tu Pedido hasta ahora")
-
-        df = pd.DataFrame(st.session_state.lista)
-        if "Eliminar" not in df.columns:
-            df["Eliminar"] = False
-
-        edited_df = st.data_editor(
-            df,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "Descripción": st.column_config.TextColumn("Descripción", width="large"),
-                "Cant.": st.column_config.NumberColumn("Bultos", min_value=0, step=1),
-                "Kg.": st.column_config.NumberColumn("Kg.", min_value=0.0, step=0.5, format="%.2f"),
-                "Tipo": st.column_config.TextColumn("Tipo"),
-                "Eliminar": st.column_config.CheckboxColumn("Eliminar")
-            }
-        )
-
-        # limpiar y normalizar
-        cleaned = []
-        for _, r in edited_df.iterrows():
-            if r["Eliminar"]:
-                continue
-            c = max(int(r["Cant."]), 0)
-            k = max(float(r["Kg."]), 0.0)
-            if c == 0 and k == 0:
-                continue
-            cleaned.append({
-                "Descripción": normalizar_texto(r["Descripción"]),
-                "Cant.": c,
-                "Kg.": round(k, 2),
-                "Tipo": normalizar_texto(r["Tipo"])
-            })
-
-        st.session_state.lista = cleaned
-        df_now = pd.DataFrame(cleaned)
+        st.dataframe(df_now, hide_index=True, use_container_width=True)
 
         c_tot, k_tot = totals(df_now)
         st.info(f"**Totales:** Bultos = {c_tot}  |  Kg = {k_tot:.2f}")
@@ -435,11 +457,12 @@ if st.session_state.nav == "Crear Pedido":
         if st.button("🗑️ Borrar último ítem", use_container_width=True):
             if st.session_state.lista:
                 st.session_state.lista.pop()
+                st.session_state.lista_hash = str(st.session_state.lista)
                 st.rerun()
     else:
         df_now = pd.DataFrame(columns=["Descripción", "Cant.", "Kg.", "Tipo"])
 
-    # FINALIZAR
+    # --- Finalizar
     if submitted_final:
         errores = []
         if not nombre_c: errores.append("• Completá el **Nombre**.")
@@ -527,14 +550,15 @@ if st.session_state.rol == "Cliente":
                 st.error("Usuario o contraseña incorrectos.")
 
 # =========================
-# 7) Panel Administración: estados + envío email
+# 7) Panel Administración: estados + envío email (con timeout)
 # =========================
 if st.session_state.get("rol") == "Admin":
     st.subheader("🛠 Administración de pedidos")
     if not st.session_state.pedidos:
         st.info("No hay pedidos en memoria.")
     else:
-        opciones = [f"{pid} | {p['resumen']['Cliente']} | {p['estado']} | {p['resumen']['Fecha']}" for pid, p in st.session_state.pedidos.items()]
+        opciones = [f"{pid} | {p['resumen']['Cliente']} | {p['estado']} | {p['resumen']['Fecha']}" 
+                    for pid, p in st.session_state.pedidos.items()]
         sel = st.selectbox("Seleccioná un pedido", opciones)
         pid_sel = sel.split(" | ")[0]
         pedido = st.session_state.pedidos[pid_sel]
@@ -550,36 +574,38 @@ if st.session_state.get("rol") == "Admin":
             if st.button("⏳ Preparación", use_container_width=True):
                 pedido["estado"] = "Preparación"
                 st.success("Estado cambiado a Preparación.")
-                ok, msg = enviar_email_pdf(
-                    destinatario=r["Email"],
-                    asunto=f"Tu pedido #{pedido['id']} está en PREPARACIÓN - FRUTAS WC",
-                    cuerpo_txt=(
-                        f"Hola {r['Cliente']},\n\n"
-                        "¡Tu pedido ya está en PREPARACIÓN! Te adjuntamos la nota de pedido en PDF.\n"
-                        "Cuando salga a distribución, te avisamos nuevamente.\n\n"
-                        "Gracias por elegirnos.\nFRUTAS WC"
-                    ),
-                    nombre_pdf=pedido["pdf_nombre"],
-                    pdf_bytes=pedido["pdf_bytes"]
-                )
+                with st.spinner("Enviando email…"):
+                    ok, msg = enviar_email_pdf(
+                        destinatario=r["Email"],
+                        asunto=f"Tu pedido #{pedido['id']} está en PREPARACIÓN - FRUTAS WC",
+                        cuerpo_txt=(
+                            f"Hola {r['Cliente']},\n\n"
+                            "¡Tu pedido ya está en PREPARACIÓN! Te adjuntamos la nota de pedido en PDF.\n"
+                            "Cuando salga a distribución, te avisamos nuevamente.\n\n"
+                            "Gracias por elegirnos.\nFRUTAS WC"
+                        ),
+                        nombre_pdf=pedido["pdf_nombre"],
+                        pdf_bytes=pedido["pdf_bytes"]
+                    )
                 st.info("Email: " + ("✔ enviado" if ok else f"✖ {msg}"))
 
         with col2:
             if st.button("🚚 Distribución", use_container_width=True):
                 pedido["estado"] = "Distribución"
                 st.success("Estado cambiado a Distribución.")
-                ok, msg = enviar_email_pdf(
-                    destinatario=r["Email"],
-                    asunto=f"Tu pedido #{pedido['id']} está en DISTRIBUCIÓN - FRUTAS WC",
-                    cuerpo_txt=(
-                        f"Hola {r['Cliente']},\n\n"
-                        "¡Tu pedido ya está en DISTRIBUCIÓN! Te adjuntamos la nota de pedido en PDF.\n"
-                        "En breve lo recibirás en tu domicilio.\n\n"
-                        "Saludos,\nFRUTAS WC"
-                    ),
-                    nombre_pdf=pedido["pdf_nombre"],
-                    pdf_bytes=pedido["pdf_bytes"]
-                )
+                with st.spinner("Enviando email…"):
+                    ok, msg = enviar_email_pdf(
+                        destinatario=r["Email"],
+                        asunto=f"Tu pedido #{pedido['id']} está en DISTRIBUCIÓN - FRUTAS WC",
+                        cuerpo_txt=(
+                            f"Hola {r['Cliente']},\n\n"
+                            "¡Tu pedido ya está en DISTRIBUCIÓN! Te adjuntamos la nota de pedido en PDF.\n"
+                            "En breve lo recibirás en tu domicilio.\n\n"
+                            "Saludos,\nFRUTAS WC"
+                        ),
+                        nombre_pdf=pedido["pdf_nombre"],
+                        pdf_bytes=pedido["pdf_bytes"]
+                    )
                 st.info("Email: " + ("✔ enviado" if ok else f"✖ {msg}"))
 
         with col3:
@@ -593,9 +619,9 @@ if st.session_state.get("rol") == "Admin":
                 st.warning("Estado reiniciado a Nuevo.")
 
 # =========================
-# 8) WhatsApp flotante
+# 8) WhatsApp flotante (fix HTML)
 # =========================
 import urllib.parse as up
 wa_msg_default = up.quote("Consultas FRUTAS WC")
 wa_link = f"https://wa.me/543516422893?text={wa_msg_default}"
-st.markdown(f'<a href="{wa_link}" class="wa-float" target="_blank">💬 WhatsApp</a>', unsafe_allow_html=True)
+st.markdown(f'<a class="wa-float" href="{wa_link}" target="_blank">💬 WhatsApp</a>', unsafe_allow_html=True)
