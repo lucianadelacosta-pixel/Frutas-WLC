@@ -44,12 +44,12 @@ st.markdown("""
 # =========================
 if "nav" not in st.session_state: st.session_state.nav = "Inicio"
 if "rol" not in st.session_state: st.session_state.rol = "Cliente"
-if "lista" not in st.session_state: st.session_state.lista = {} # Cambiado a dict para facilitar búsqueda
+if "lista" not in st.session_state: st.session_state.lista = {} 
 if "pedidos" not in st.session_state: st.session_state.pedidos = {}
 if "ultimo_pedido" not in st.session_state: st.session_state.ultimo_pedido = None
 if "pedido_finalizado" not in st.session_state: st.session_state.pedido_finalizado = False
 
-# Listas exactas según tu Excel
+# Listas basadas exactamente en tu "NOTA DE PEDIDO.csv"
 PRODUCTOS_IZQ = [
     "Acelga","Achicoria","Ajo","Alcaucil","Ananá","Apio","Arándanos","Banana","Batata","Berenjena",
     "Brócoli","Calabacín","Calabaza","Cebolla","Cerezas","Champiñón","Chaucha","Choclo","Ciruela","Coliflor",
@@ -76,86 +76,95 @@ def generar_pdf_wc(datos):
     w, h = A4
     mx, my = 10*mm, 10*mm
 
-    # --- ENCABEZADO ESTILO EXCEL ---
+    # --- ENCABEZADO ---
     p.setFont("Helvetica-Bold", 14)
     p.drawString(mx, h-my-5*mm, "FRUTAS Y VERDURAS WC")
-    p.setFont("Helvetica-Bold", 12)
     p.drawRightString(w-mx, h-my-5*mm, "NOTA DE PEDIDO")
     
     p.setFont("Helvetica", 8)
-    p.drawString(mx, h-my-10*mm, "Contacto: 351 6351605")
-    p.drawString(mx, h-my-14*mm, "Correo: frutasyverduraswc@gmail.com")
+    p.drawString(mx, h-my-10*mm, "Contacto: 351 6351605 | Correo: frutasyverduraswc@gmail.com")
     
-    # Fecha (Día/Mes/Año)
+    # Fecha separada por campos (Estilo Excel)
+    now = datetime.now()
     p.setFont("Helvetica-Bold", 9)
-    p.drawString(w-mx-30*mm, h-my-10*mm, f"FECHA: {datos['Fecha']}")
+    p.drawString(w-mx-40*mm, h-my-12*mm, f"DIA: {now.day}  MES: {now.month}  AÑO: {now.year}")
     
-    # Datos Cliente
-    p.rect(mx, h-my-35*mm, w-2*mx, 15*mm) # Recuadro info
+    # Datos Cliente con recuadro
+    p.setLineWidth(0.2)
+    p.rect(mx, h-my-32*mm, w-2*mx, 14*mm)
     p.setFont("Helvetica-Bold", 10)
-    p.drawString(mx+2*mm, h-my-26*mm, f"CLIENTE: {datos['Cliente']}")
-    p.drawString(mx+2*mm, h-my-32*mm, f"DOMICILIO: {datos['Domicilio']}")
+    p.drawString(mx+2*mm, h-my-24*mm, f"CLIENTE: {datos['Cliente']}")
+    p.drawString(mx+2*mm, h-my-30*mm, f"DOMICILIO: {datos['Domicilio']}")
     
     # --- TABLA DOBLE COLUMNA ---
-    y_start = h-my-45*mm
+    y_start = h-my-42*mm
     col_width = (w - 2*mx) / 2
     
-    def dibujar_encabezado_tabla(x, y):
-        p.setFont("Helvetica-Bold", 8)
+    def dibujar_headers(x, y):
         p.setFillColor(colors.lightgrey)
         p.rect(x, y-4*mm, col_width, 5*mm, fill=1)
         p.setFillColor(colors.black)
+        p.setFont("Helvetica-Bold", 8)
         p.drawString(x+2*mm, y-1*mm, "Descripción")
-        p.drawString(x+col_width-35*mm, y-1*mm, "Cant.")
-        p.drawString(x+col_width-20*mm, y-1*mm, "Kg.")
-        p.drawString(x+col_width-10*mm, y-1*mm, "$")
+        p.drawString(x+col_width-30*mm, y-1*mm, "Cant.")
+        p.drawString(x+col_width-15*mm, y-1*mm, "Kg.")
 
-    dibujar_encabezado_tabla(mx, y_start)
-    dibujar_encabezado_tabla(mx + col_width, y_start)
+    dibujar_headers(mx, y_start)
+    dibujar_headers(mx + col_width, y_start)
     
-    # Dibujar filas
     y = y_start - 5*mm
-    p.setFont("Helvetica", 8)
-    line_height = 4.5*mm
-    
-    max_filas = max(len(PRODUCTOS_IZQ), len(PRODUCTOS_DER))
-    
-    pedido = datos['Detalle'] # Es un diccionario {NOMBRE: {Cant, Kg}}
+    line_h = 4.3*mm
+    pedido = datos['Detalle']
 
-    for i in range(max_filas):
-        # Columna Izquierda
+    for i in range(max(len(PRODUCTOS_IZQ), len(PRODUCTOS_DER))):
+        p.setFont("Helvetica", 7.5)
+        # Columna 1
         if i < len(PRODUCTOS_IZQ):
-            prod = PRODUCTOS_IZQ[i]
-            p.drawString(mx+2*mm, y, prod)
-            if prod.upper() in pedido:
+            item = PRODUCTOS_IZQ[i]
+            p.drawString(mx+2*mm, y, item)
+            if item.upper() in pedido:
                 p.setFont("Helvetica-Bold", 8)
-                p.drawString(mx+col_width-35*mm, y, str(pedido[prod.upper()]['Cant.']) if pedido[prod.upper()]['Cant.'] > 0 else "")
-                p.drawString(mx+col_width-20*mm, y, str(pedido[prod.upper()]['Kg.']) if pedido[prod.upper()]['Kg.'] > 0 else "")
-                p.setFont("Helvetica", 8)
+                p.drawString(mx+col_width-28*mm, y, str(pedido[item.upper()]['Cant.']) if pedido[item.upper()]['Cant.']>0 else "")
+                p.drawString(mx+col_width-13*mm, y, str(pedido[item.upper()]['Kg.']) if pedido[item.upper()]['Kg.']>0 else "")
+                p.setFont("Helvetica", 7.5)
             p.line(mx, y-1*mm, mx+col_width, y-1*mm)
 
-        # Columna Derecha
+        # Columna 2
         if i < len(PRODUCTOS_DER):
-            prod = PRODUCTOS_DER[i]
-            p.drawString(mx+col_width+2*mm, y, prod)
-            if prod.upper() in pedido:
+            item = PRODUCTOS_DER[i]
+            p.drawString(mx+col_width+2*mm, y, item)
+            if item.upper() in pedido:
                 p.setFont("Helvetica-Bold", 8)
-                p.drawString(mx+2*col_width-35*mm, y, str(pedido[prod.upper()]['Cant.']) if pedido[prod.upper()]['Cant.'] > 0 else "")
-                p.drawString(mx+2*col_width-20*mm, y, str(pedido[prod.upper()]['Kg.']) if pedido[prod.upper()]['Kg.'] > 0 else "")
-                p.setFont("Helvetica", 8)
+                p.drawString(mx+2*col_width-28*mm, y, str(pedido[item.upper()]['Cant.']) if pedido[item.upper()]['Cant.']>0 else "")
+                p.drawString(mx+2*col_width-13*mm, y, str(pedido[item.upper()]['Kg.']) if pedido[item.upper()]['Kg.']>0 else "")
+                p.setFont("Helvetica", 7.5)
             p.line(mx+col_width, y-1*mm, w-mx, y-1*mm)
-        
-        y -= line_height
+        y -= line_h
 
-    # Bordes verticales
-    p.line(mx, y_start+1*mm, mx, y+line_height-1*mm)
-    p.line(mx+col_width, y_start+1*mm, mx+col_width, y+line_height-1*mm)
-    p.line(w-mx, y_start+1*mm, w-mx, y+line_height-1*mm)
+    # Líneas verticales de cierre
+    p.line(mx, y_start+1*mm, mx, y+line_h-1*mm)
+    p.line(mx+col_width, y_start+1*mm, mx+col_width, y+line_h-1*mm)
+    p.line(w-mx, y_start+1*mm, w-mx, y+line_h-1*mm)
 
     p.showPage()
     p.save()
     buf.seek(0)
     return buf
+
+def enviar_email(dest, asunto, cuerpo, pdf_nombre, pdf_bytes):
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = asunto
+        msg["From"] = st.secrets["SMTP_FROM"]
+        msg["To"] = dest
+        msg.set_content(cuerpo)
+        msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=pdf_nombre)
+        with smtplib.SMTP(st.secrets["SMTP_HOST"], st.secrets["SMTP_PORT"], timeout=10) as s:
+            s.starttls()
+            s.login(st.secrets["SMTP_USER"], st.secrets["SMTP_PASS"])
+            s.send_message(msg)
+        return True, "Enviado"
+    except Exception as e: return False, str(e)
 
 # =========================
 # 3) INTERFAZ DE USUARIO
@@ -163,13 +172,11 @@ def generar_pdf_wc(datos):
 st.title("🍎 FRUTAS WC")
 c_nav = st.columns(4)
 if c_nav[0].button("🏠 Inicio", use_container_width=True): 
-    st.session_state.nav = "Inicio"
-    st.session_state.pedido_finalizado = False
+    st.session_state.nav = "Inicio"; st.session_state.pedido_finalizado = False
 if c_nav[1].button("📖 Nosotros", use_container_width=True): 
     st.session_state.nav = "Nosotros"
 if c_nav[2].button("🛒 Crear Pedido", use_container_width=True): 
-    st.session_state.nav = "Crear Pedido"
-    st.session_state.pedido_finalizado = False
+    st.session_state.nav = "Crear Pedido"; st.session_state.pedido_finalizado = False
 if c_nav[3].button("🔎 Mi Pedido", use_container_width=True): 
     st.session_state.nav = "Estado"
 
@@ -180,88 +187,121 @@ if st.session_state.nav == "Crear Pedido":
         st.balloons()
         st.success("## ✅ ¡Pedido Generado con Éxito!")
         p = st.session_state.ultimo_pedido
-        st.write(f"### ID del Pedido: **{p['id']}**")
+        st.write(f"ID del pedido: **{p['id']}**")
         
-        c_ex1, c_ex2 = st.columns(2)
-        with c_ex1:
-            st.download_button("📥 Descargar NOTA DE PEDIDO (PDF)", data=p['pdf_bytes'], 
-                               file_name=f"Nota_Pedido_{p['id']}.pdf", mime="application/pdf", use_container_width=True)
-        with c_ex2:
-            if st.button("🔎 Ver Estado de mi Pedido", use_container_width=True):
-                st.session_state.nav = "Estado"; st.session_state.pedido_finalizado = False; st.rerun()
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button("📥 Descargar NOTA DE PEDIDO", data=p['pdf_bytes'], 
+                               file_name=f"Pedido_{p['id']}.pdf", mime="application/pdf", use_container_width=True)
+        with col2:
+            if st.button("🛒 Crear otro pedido", use_container_width=True):
+                st.session_state.pedido_finalizado = False; st.rerun()
         
-        if st.button("🛒 Crear otro Pedido", use_container_width=True):
-            st.session_state.pedido_finalizado = False; st.rerun()
+        if st.button("🔎 Ver estado de mis pedidos", use_container_width=True):
+            st.session_state.nav = "Estado"; st.session_state.pedido_finalizado = False; st.rerun()
 
     else:
         st.header("🛒 Armá tu Pedido")
         with st.container():
-            col_cli, col_dom, col_mail = st.columns(3)
-            cli = col_cli.text_input("Nombre / Negocio")
-            dom = col_dom.text_input("Domicilio")
-            mail = col_mail.text_input("Email")
+            c1, c2, c3 = st.columns(3)
+            cli = c1.text_input("Nombre / Negocio")
+            dom = c2.text_input("Domicilio de Entrega")
+            mail = c3.text_input("Email (opcional)")
             
-            c_t1, c_t2, c_t3 = st.columns([2,1,1])
-            fec = c_t1.date_input("Fecha de entrega", min_value=datetime.now().date() + timedelta(days=1))
-            h1 = c_t2.time_input("Desde", value=time(8,0))
-            h2 = c_t3.time_input("Hasta", value=time(14,0))
+            c_f1, c_f2, c_f3 = st.columns([2,1,1])
+            fec = c_f1.date_input("Fecha de entrega", min_value=datetime.now().date() + timedelta(days=1))
+            h1 = c_f2.time_input("Desde", value=time(8,0))
+            h2 = c_f3.time_input("Hasta", value=time(14,0))
 
         st.write("---")
         st.subheader("1. Seleccioná del catálogo")
         cp, cc, ck, cb = st.columns([3, 1, 1, 1])
-        item = cp.selectbox("Producto", TODOS)
-        cant = cc.number_input("Cant. (Bultos)", min_value=0, step=1)
-        kg = ck.number_input("Kg.", min_value=0.0, step=0.5)
+        item_sel = cp.selectbox("Producto", TODOS)
+        cant_sel = cc.number_input("Bultos", min_value=0, step=1)
+        kg_sel = ck.number_input("Kg.", min_value=0.0, step=0.5)
         if cb.button("➕ Agregar", use_container_width=True):
-            if cant > 0 or kg > 0:
-                agregar_item(item, cant, kg)
-                st.toast(f"Agregado: {item}")
+            if cant_sel > 0 or kg_sel > 0:
+                agregar_item(item_sel, cant_sel, kg_sel)
+                st.toast(f"Añadido: {item_sel}")
+
+        # Listado visual antes de confirmar
+        if st.session_state.lista:
+            st.write("### 📋 Resumen actual")
+            df = pd.DataFrame.from_dict(st.session_state.lista, orient='index').reset_index()
+            df.columns = ["Descripción", "Cant.", "Kg."]
+            st.dataframe(df, hide_index=True, use_container_width=True)
+            if st.button("🗑️ Vaciar Todo"):
+                st.session_state.lista = {}; st.rerun()
+
+        st.write("---")
+        with st.expander("➕ ¿No encontrás un producto? Agregalo aquí"):
+            ce1, ce2, ce3, ce4 = st.columns([3, 1, 1, 1])
+            e_nom = ce1.text_input("Nombre del producto especial")
+            e_can = ce2.number_input("Bultos", min_value=0, step=1, key="es_c")
+            e_kg = ce3.number_input("Kg.", min_value=0.0, step=0.5, key="es_k")
+            if ce4.button("✔ Añadir", use_container_width=True):
+                if e_nom: agregar_item(e_nom, e_can, e_kg); st.rerun()
 
         if st.session_state.lista:
-            st.write("### 📋 Resumen del Pedido")
-            df_resumen = pd.DataFrame.from_dict(st.session_state.lista, orient='index').reset_index()
-            df_resumen.columns = ["Descripción", "Cant.", "Kg."]
-            st.dataframe(df_resumen, hide_index=True, use_container_width=True)
-            
-            if st.button("🗑️ Vaciar Lista"):
-                st.session_state.lista = {}
-                st.rerun()
-
             if st.button("🚀 CONFIRMAR PEDIDO Y GENERAR PDF", use_container_width=True):
                 if cli and dom:
                     datos = {
                         "Cliente": cli.upper(), "Domicilio": dom, "Email": mail,
                         "Fecha": fec.strftime("%d/%m/%Y"),
-                        "Horario": f"{h1.strftime('%H:%M')} a {h2.strftime('%H:%M')}",
                         "Detalle": dict(st.session_state.lista)
                     }
-                    pdf_io = generar_pdf_wc(datos)
-                    pdf_bytes = pdf_io.getvalue()
+                    pdf_bytes = generar_pdf_wc(datos).getvalue()
                     oid = uuid.uuid4().hex[:6].upper()
-                    
                     pedido = {"id": oid, "resumen": datos, "pdf_bytes": pdf_bytes, "estado": "Nuevo"}
                     st.session_state.pedidos[oid] = pedido
                     st.session_state.ultimo_pedido = pedido
                     st.session_state.pedido_finalizado = True
                     st.session_state.lista = {}
                     st.rerun()
-                else:
-                    st.error("⚠️ El nombre y domicilio son obligatorios.")
+                else: st.error("Completá Nombre y Domicilio.")
 
-# --- SECCIONES RESTANTES ---
 elif st.session_state.nav == "Inicio":
     st.subheader("Bienvenida/o a FRUTAS WC")
-    st.info("Hacé tu pedido online y recibí tu nota de pedido profesional al instante.")
+    st.info("Utilizá el menú superior para armar tu pedido. Recibirás una nota de pedido con el formato oficial.")
+
+elif st.session_state.nav == "Nosotros":
+    st.subheader("📖 Sobre Nosotros")
+    st.write("Somos proveedores de frutas y verduras frescas con años de experiencia en el mercado.")
 
 elif st.session_state.nav == "Estado":
-    st.subheader("🔎 Mi Pedido")
-    p = st.session_state.ultimo_pedido
-    if p:
-        st.write(f"**Pedido ID:** {p['id']} | **Estado:** {p['estado']}")
-        df_p = pd.DataFrame.from_dict(p['resumen']['Detalle'], orient='index').reset_index()
-        df_p.columns = ["Descripción", "Cant.", "Kg."]
-        st.dataframe(df_p, hide_index=True)
-        st.download_button("📥 Descargar PDF nuevamente", data=p['pdf_bytes'], file_name=f"Pedido_{p['id']}.pdf")
-    else: st.warning("No tienes pedidos activos.")
+    st.subheader("🔎 Mis Pedidos")
+    if not st.session_state.pedidos: st.warning("No hay pedidos registrados.")
+    else:
+        for pid, ped in st.session_state.pedidos.items():
+            with st.expander(f"Pedido {pid} - {ped['resumen']['Cliente']} ({ped['estado']})"):
+                st.write(f"Fecha: {ped['resumen']['Fecha']}")
+                st.download_button("📥 Descargar PDF", data=ped['pdf_bytes'], file_name=f"Pedido_{pid}.pdf", key=pid)
+
+# =========================
+# 6) ADMIN
+# =========================
+st.write("---")
+if st.session_state.rol == "Cliente":
+    with st.expander("🔒 Admin"):
+        u = st.text_input("Usuario")
+        p = st.text_input("Contraseña", type="password")
+        if st.button("Entrar"):
+            if u == st.secrets["ADMIN_USER"] and p == st.secrets["ADMIN_PASS"]:
+                st.session_state.rol = "Admin"; st.rerun()
+else:
+    st.subheader("🛠 Panel de Administración")
+    if st.button("Cerrar Sesión Admin"): st.session_state.rol = "Cliente"; st.rerun()
+    if not st.session_state.pedidos: st.info("No hay pedidos nuevos.")
+    else:
+        for pid, ped in st.session_state.pedidos.items():
+            with st.expander(f"ORDEN {pid} - {ped['resumen']['Cliente']}"):
+                st.write(f"Estado: {ped['estado']}")
+                c_a1, c_a2 = st.columns(2)
+                if c_a1.button(f"En Distribución {pid}"):
+                    ped['estado'] = "En Distribución"
+                    if ped['resumen']['Email']:
+                        enviar_email(ped['resumen']['Email'], "Pedido en Camino", "Tu pedido WC está en distribución.", f"Pedido_{pid}.pdf", ped['pdf_bytes'])
+                    st.rerun()
+                if c_a2.button(f"Marcar Entregado {pid}"): ped['estado'] = "Entregado"; st.rerun()
 
 st.markdown(f'<a class="wa-float" href="https://wa.me/543516422893" target="_blank">💬 WhatsApp</a>', unsafe_allow_html=True)
