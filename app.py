@@ -122,8 +122,3 @@ st.markdown(f"""
         Consultas a nuestro WhatsApp
     </a>
     """, unsafe_allow_html=True)
-    st.dataframe(st.session_state.pedidos, hide_index=True, use_container_width=True)
-
-# --- 5. BOTÓN WHATSAPP ---
-wa_url = "https://wa.me/543516422893?text=Hola%20Frutas%20WLC%20quisiera%20consultar%20por%20un%20pedido"
-st.markdown(f'<a href="{wa_url}" class="whatsapp-button" target="_blank">💬 Pedir por WhatsApp</a>', unsafe_allow_html=True)
